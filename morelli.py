@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import sys, csv, os, xlrd, zipfile, datetime
+import sys, csv, os, xlrd, zipfile, datetime, jinja2
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -54,6 +54,10 @@ class EbayFx(csv.DictWriter):
 
 DATA_PATH = os.path.join('data')
 ACTION = '*Action(SiteID=Italy|Country=IT|Currency=EUR|Version=745|CC=UTF-8)' # smartheaders CONST
+FTPURL = 'morelli.ftpimg.eu'
+PICURL = 'PicURL=http://'+FTPURL+'/nopic.jpg' # smartheaders CONST
+EMAIL = 'parafarmaciamorelli@gmail.com'
+PHONE = '0835/680388'
 
 # Fruitful functions
 # ------------------
@@ -73,48 +77,85 @@ def get_fname_in(folder):
     else:
         raise Exception('More files or folders found')
 
+def ebay_template(tpl_name, context):
+    'Return one line html ebay templated for description field'
+    try:
+        template_loader = jinja2.FileSystemLoader(
+            searchpath=os.path.join(os.getcwd(), 'templates', tpl_name))
+        template_env = jinja2.Environment(loader=template_loader)
+
+        template = template_env.get_template('index.htm')
+        output = template.render(context)
+        res = ' '.join(output.split()).encode('iso-8859-1')
+        return res
+    except:
+        print sys.exc_info()[0]
+        print sys.exc_info()[1]        
+
+
+# datasources
+# -----------
+
+def datasource(fcsv):
+    'Yield a dict of values from estrazione.xls'
+
+    data_line = dict()
+
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
+        dsource_rows.next()
+        for row in dsource_rows:
+            try:
+                data_line['mo_code'] = row[0].strip()
+                data_line['descrizione'] = row[1].strip()
+                data_line['prc'] = float(row[2].strip())/1000
+                data_line['categoria'] = row[3].strip()
+                data_line['qty'] = int(row[4].strip())                            
+                data_line['iva'] = row[5].strip().lower()
+                
+                yield data_line
+                
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]        
+
 
 # loaders
 # -------
 
-def generic_data_loader(session):
+def data_loader():
     "Load data file into DB"
-    folder = os.path.join(DATA_PATH)
+    fname = os.path.join(DATA_PATH, 'estrazione.csv')
 
-    for fname in get_fname_in(folder):
-        with open(fname, 'rb') as f:
-            dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
-            dsource_rows.next()
-            dstore_row = dict()
-            for dsource_row in dsource_rows:
-                try:
-                    dstore_row['ga_code']=dsource_row[0]
-                    dstore_row['brand']=' '.join(dsource_row[4].split()[1:]).title()
-                    dstore_row['mnf_code']=dsource_row[6]
-                    dstore_row['description']=dsource_row[2].decode('iso.8859-1')
-                    dstore_row['category']=' '.join(dsource_row[5].split()[1:])
-                    dstore_row['units_of_sale']=dsource_row[3].split().pop(0)
-                    dstore_row['min_of_sale']=int(float((dsource_row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
-                    
-                    art = session.query(Art).filter(Art.ga_code == dstore_row['ga_code']).first()
+    for data_line in datasource(fname):
+        try:
+            art = s.query(Art).filter(Art.mo_code == data_line['mo_code']).first()
+            if not art: # not exsists, create
+                art = Art()
 
-                    if not art: art = Art()
-                    for attr, value in dstore_row.items():
-                        setattr(art, attr, value)
-                    session.add(art)
-                except ValueError:
-                    print 'rejected line:'
-                    print dsource_row
-                    print sys.exc_info()[0]
-                    print sys.exc_info()[1]
-                    print sys.exc_info()[2]
-        os.remove(fname)
-        session.commit()
+            art.mo_code = data_line['mo_code']
+            art.descrizione = data_line['descrizione']
+            art.prc = data_line['prc']
+            art.categoria = data_line['categoria']
+            art.qty = data_line['qty']
+            art.iva = data_line['iva']
 
-def add(session):
+            s.add(art)
+        except ValueError:
+            print 'rejected line:'
+            print data_line
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]
+    s.commit()
+
+def add():
     'Fx add action'
     smartheaders = (ACTION,
-                    '*Category=50584',
+                    '*Category=67589',
                     '*Title',
                     'Description',
                     PICURL,
@@ -128,49 +169,64 @@ def add(session):
                     'OutOfStockControl=true',
                     '*Location=Matera',
                     'VATPercent=22',
-                    '*ReturnsAcceptedOption=ReturnsAccepted',
-                    'ReturnsWithinOption=Days_30',
-                    'ShippingCostPaidByOption=Buyer',                    
                     # Regole di vendita
-                    'PaymentProfileName=PayPal-Bonifico',
-                    'ReturnProfileName=Reso1',
-                    'ShippingProfileName=GLS_paid',
-                    # specifiche oggetto
-                    'C:Marca',
-                    'C:Modello',
-                    'C:Genere',
+                    'PaymentProfileName=PayPal',
+                    'ReturnProfileName=Reso30gg',
+                    'ShippingProfileName=Raccomandata-Paccocelere',
                     'Counter=BasicStyle',)
-    
-    arts = session.query(Art).filter(Art.ebay_itemid == u'',
-                                     Art.units_of_sale == 'PZ',
-                                     Art.min_of_sale <= 1, #0 ia as 1
-                                     Art.ebay_price > 1,
-                                     Art.sale_control >= 0,
-                                     Art.ebay_qty > 0)
 
-    fout_name = os.path.join(DATA_PATH, 'fx_output', fx_fname('add', session))
-    gacodes_of_images = items_with_img()
+store_cat_n = {
+    'Accessori agli art. sanitari':'9115802014'
+    'Accessori ai pmc':'9115803014'
+    'Acque minerali':'9115797014'
+    'Alimenti per la prima infanzia':'9115812014'
+    'Ausili sanitari':'9115801014'
+    'Diagnostici in vitro':'9115794014'
+    'Edulcoranti sintetici':'9115818014'
+    'Erboristeria salut. preconf.':'9115791014'
+    'Integratori alimentari':'9115789014'
+    'Materiale per protesi':'9115805014'
+    'Parafarmaci':'9115788014'
+    'Presidi medico-chirurgici':'9115800014'
+    'Prod.per igiene int.uso inter.':'9115793014'
+    'Prodotti capelli e cuoio cap.':'9115799014'
+    'Prodotti dietetici':'9115804014'
+    'Prodotti igiene del bambino':'9115815014'
+    'Prodotti igiene del corpo':'9115807014'
+    'Prodotti igiene dentale':'9115806014'
+    'Prodotti omeopatici':'9115811014'
+    'Prodotti per il corpo':'9115795014'
+    'Prodotti per le mani':'9115808014'
+    'Prodotti per uomo':'9115816014'
+    'Prodotti sanitari':'9115790014'
+    'Prodotti solari':'9115809014'
+    'Prodotti viso, trattamento':'9115792014'
+    'Prodotti viso, trucco':'9115817014'
+    'Prodotti viso/deterg./struc.':'9115813014'
+    'Prodotti zootecnici':'9115814014'
+    'Sostanze materie prime uso lab':'9115796014'
+    'Sostanze preconf. per vendita':'9115798014'
+    'Strumenti sanitari':'9115810014'
+}
+    
+    arts = s.query(Art).all()
+
+    fout_name = os.path.join(DATA_PATH, 'add.csv')
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
-            title = ebay_title(art.brand, art.description, art.mnf_code)
-            context = {'ga_code':art.ga_code,
-                       'title':title,
+            context = {'mo_code':art.mo_code,
+                       'title':art.descrizione,
                        'description':'',
                        'email':EMAIL,
                        'phone':PHONE,
                        'invoice_form_url':INVOICE_FORM_URL,}
             ebay_description = ebay_template('garofoli', context)
-            fx_add_row = {ACTION:'Add',
-                          '*Title':title.encode('iso-8859-1'),
+            fx_add_row = {ACTION:'VerifyAdd',
+                          '*Title':art.descrizione.encode('iso-8859-1'),
                           'Description':ebay_description,
-                          '*Quantity':art.ebay_qty,
-                          '*StartPrice':art.ebay_price,
-                          'ShippingProfileName=GLS_paid':'',
-                          'CustomLabel':art.ga_code,
-                          PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
-                          'StoreCategory=1':store_cat_n(art.category, session),
-                          '*Category=50584':ebay_cat_n(art.category, session),
-                          'C:Marca':art.brand,
-                          'C:Modello':art.mnf_code,
-                          'C:Genere':art.category}
+                          '*Quantity':art.qty,
+                          '*StartPrice':art.prc,
+                          'CustomLabel':art.mo_code,
+                          'StoreCategory=1':store_cat_n(art.categoria),
+                          }
             wrt.writerow(fx_add_row)        
