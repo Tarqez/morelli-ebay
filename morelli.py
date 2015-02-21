@@ -175,58 +175,67 @@ def add():
                     'ShippingProfileName=Raccomandata-Paccocelere',
                     'Counter=BasicStyle',)
 
-store_cat_n = {
-    'Accessori agli art. sanitari':'9115802014'
-    'Accessori ai pmc':'9115803014'
-    'Acque minerali':'9115797014'
-    'Alimenti per la prima infanzia':'9115812014'
-    'Ausili sanitari':'9115801014'
-    'Diagnostici in vitro':'9115794014'
-    'Edulcoranti sintetici':'9115818014'
-    'Erboristeria salut. preconf.':'9115791014'
-    'Integratori alimentari':'9115789014'
-    'Materiale per protesi':'9115805014'
-    'Parafarmaci':'9115788014'
-    'Presidi medico-chirurgici':'9115800014'
-    'Prod.per igiene int.uso inter.':'9115793014'
-    'Prodotti capelli e cuoio cap.':'9115799014'
-    'Prodotti dietetici':'9115804014'
-    'Prodotti igiene del bambino':'9115815014'
-    'Prodotti igiene del corpo':'9115807014'
-    'Prodotti igiene dentale':'9115806014'
-    'Prodotti omeopatici':'9115811014'
-    'Prodotti per il corpo':'9115795014'
-    'Prodotti per le mani':'9115808014'
-    'Prodotti per uomo':'9115816014'
-    'Prodotti sanitari':'9115790014'
-    'Prodotti solari':'9115809014'
-    'Prodotti viso, trattamento':'9115792014'
-    'Prodotti viso, trucco':'9115817014'
-    'Prodotti viso/deterg./struc.':'9115813014'
-    'Prodotti zootecnici':'9115814014'
-    'Sostanze materie prime uso lab':'9115796014'
-    'Sostanze preconf. per vendita':'9115798014'
-    'Strumenti sanitari':'9115810014'
-}
+    store_cat_n = {
+        'Accessori agli art. sanitari':'9115802014',
+        'Accessori ai pmc':'9115803014',
+        'Acque minerali':'9115797014',
+        'Alimenti per la prima infanzia':'9115812014',
+        'Ausili sanitari':'9115801014',
+        'Diagnostici in vitro':'9115794014',
+        'Edulcoranti sintetici':'9115818014',
+        'Erboristeria salut. preconf.':'9115791014',
+        'Integratori alimentari':'9115789014',
+        'Materiale per protesi':'9115805014',
+        'Parafarmaci':'9115788014',
+        'Presidi medico-chirurgici':'9115800014',
+        'Prod.per igiene int.uso inter.':'9115793014',
+        'Prodotti capelli e cuoio cap.':'9115799014',
+        'Prodotti dietetici':'9115804014',
+        'Prodotti igiene del bambino':'9115815014',
+        'Prodotti igiene del corpo':'9115807014',
+        'Prodotti igiene dentale':'9115806014',
+        'Prodotti omeopatici':'9115811014',
+        'Prodotti per il corpo':'9115795014',
+        'Prodotti per le mani':'9115808014',
+        'Prodotti per uomo':'9115816014',
+        'Prodotti sanitari':'9115790014',
+        'Prodotti solari':'9115809014',
+        'Prodotti viso, trattamento':'9115792014',
+        'Prodotti viso, trucco':'9115817014',
+        'Prodotti viso/deterg./struc.':'9115813014',
+        'Prodotti zootecnici':'9115814014',
+        'Sostanze materie prime uso lab':'9115796014',
+        'Sostanze preconf. per vendita':'9115798014',
+        'Strumenti sanitari':'9115810014',
+    }
     
     arts = s.query(Art).all()
 
-    fout_name = os.path.join(DATA_PATH, 'add.csv')
+    fout_name = os.path.join(DATA_PATH, 'add_1.csv')
     with EbayFx(fout_name, smartheaders) as wrt:
-        for art in arts:
+        for art in arts[:1]:
             context = {'mo_code':art.mo_code,
                        'title':art.descrizione,
                        'description':'',
                        'email':EMAIL,
-                       'phone':PHONE,
-                       'invoice_form_url':INVOICE_FORM_URL,}
-            ebay_description = ebay_template('garofoli', context)
-            fx_add_row = {ACTION:'VerifyAdd',
+                       'phone':PHONE,}
+
+            ebay_description = ebay_template('morelli', context)
+            fx_add_row = {ACTION:'Add',
                           '*Title':art.descrizione.encode('iso-8859-1'),
                           'Description':ebay_description,
                           '*Quantity':art.qty,
                           '*StartPrice':art.prc,
                           'CustomLabel':art.mo_code,
-                          'StoreCategory=1':store_cat_n(art.categoria),
+                          'StoreCategory=1':store_cat_n[art.categoria],
+                          'VATPercent=22':art.iva if art.iva != 22 else '',
                           }
-            wrt.writerow(fx_add_row)        
+            wrt.writerow(fx_add_row)     
+
+def test():
+    global s 
+    s = Session()
+    add()
+    s.close()
+
+
