@@ -169,9 +169,10 @@ def add():
                     'OutOfStockControl=true',
                     '*Location=Matera',
                     'VATPercent=22',
+                    'BestOfferEnabled=1',
                     # Regole di vendita
                     'PaymentProfileName=PayPal',
-                    'ReturnProfileName=Reso30gg',
+                    'ReturnProfileName=Reso14gg',
                     'ShippingProfileName=Raccomandata-Paccocelere',
                     'Counter=BasicStyle',)
 
@@ -211,9 +212,9 @@ def add():
     
     arts = s.query(Art).all()
 
-    fout_name = os.path.join(DATA_PATH, 'add_1.csv')
+    fout_name = os.path.join(DATA_PATH, 'add_00.csv')
     with EbayFx(fout_name, smartheaders) as wrt:
-        for art in arts[:1]:
+        for art in arts:
             context = {'mo_code':art.mo_code,
                        'title':art.descrizione,
                        'description':'',
